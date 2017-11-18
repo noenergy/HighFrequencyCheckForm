@@ -37,6 +37,7 @@ namespace VehicleCheck
             public int StartTime;
             public int EndTime;
             public DateTime PassTime;
+            public int isUsed = 0;
         }
 
         class CarInfo
