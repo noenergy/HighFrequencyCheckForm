@@ -72,7 +72,7 @@ namespace VehicleCheck
         //允许误差时间(ms)
         int allowDifftime = 200;
         //最大可跳开传感器数量
-        int maxPassTime = 9;
+        int maxPassTime = 7;
         //去除最大最小传感器进入出去时间的数据数量
         int removeDataBase = 8;
         /// <summary>
@@ -218,234 +218,70 @@ namespace VehicleCheck
 
                         minSensorTime = ((minSensorTime / 100) * 100) - 100;
                         maxSensorTime = ((maxSensorTime / 100) * 100) + 100;
-                        //int lastLeftCount = 0;
-                        //int lastRightCount = 0;
-                        bool isLeftInCar = false;
-                        int leftCarStart = 0;
-                        bool isRightInCar = false;
-                        int rightCarStart = 0;
+
+                        bool isCar = false;
+                        int CarStart = 0;
+                        int CarEnd = 0;
                         for (int scanTime = minSensorTime; scanTime <= maxSensorTime; scanTime += 100)
-                        {
-                            //bool isCut12 = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime <= scanTime && x.EndTime >= scanTime && x.ID < cut12 + 2 && x.ID > cut12 - 2).Count() >= 3;
-                            bool isCut23 = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime <= scanTime && x.EndTime >= scanTime && x.ID < cut23 + 2 && x.ID > cut23 - 2).Count() >= 3;
+                        {                            
+                            var scanTimeSensorList = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime <= scanTime && x.EndTime >= scanTime && x.ID < cut23).OrderBy(x => x.ID);
+                            int scanCount = scanTimeSensorList.Count();
+                            int scanSpan = scanCount > 0 ? scanTimeSensorList.Max(x => x.ID) - scanTimeSensorList.Min(x => x.ID) : 0;
 
-                            var scanTimeLeftSensorList = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime <= scanTime && x.EndTime >= scanTime && x.ID < cut23).OrderBy(x => x.ID);
-                            int scanLeftCount = scanTimeLeftSensorList.Count();
-                            int scanLeftSpan = scanLeftCount > 0 ? scanTimeLeftSensorList.Max(x => x.ID) - scanTimeLeftSensorList.Min(x => x.ID) : 0;
-
-                            //if (scanLeftCount > lastLeftCount && scanLeftCount > minSensorCheckNum && !isLeftInCar)
-                            if (scanLeftCount > minSensorCheckNum && scanLeftSpan > minSensorSpanNum && !isLeftInCar)
+                            if (scanCount > minSensorCheckNum && scanSpan > minSensorSpanNum && !isCar)
                             {
-                                leftCarStart = scanTime - allowDifftime;
-                                isLeftInCar = true;
+                                CarStart = scanTime - allowDifftime;
+                                isCar = true;
                             }
-                            if (scanLeftCount <= 5 && isLeftInCar)
+                            if (scanCount <= 5 && isCar)
                             {
-                                int leftCarEnd = scanTime + allowDifftime;
-                                isLeftInCar = false;
-                                if (isCut23)
+                                isCar = false;
+                                CarEnd = scanTime + allowDifftime;
+                                int pCarStart = 0;
+                                int pCarEnd = 0;
+                                int pCarLeft = 0;
+                                int pCarRight = 0;
+                                while (true)
                                 {
-                                    var carData = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime > leftCarStart && x.EndTime < leftCarEnd).OrderBy(x => x.ID);
-                                    var carDataList = carData.ToList();
-                                    if (carData.Count() > minSensorCheckNum)
+                                    pCarStart = 0;
+                                    pCarEnd = 0;
+                                    pCarLeft = 0;
+                                    pCarRight = 0;
+                                    var carData = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime > CarStart && x.EndTime < CarEnd).OrderBy(x => x.ID);
+                                    int scanDataCount = carData.Count();
+                                    int scanDataSpan = scanDataCount > 0 ? carData.Max(x => x.ID) - carData.Min(x => x.ID) : 0;
+                                    if (scanDataCount < 5 || scanDataSpan < minSensorSpanNum)
                                     {
-                                        int startID = 0;
-                                        for (int i = 0; i < carDataList.Count; i++)
+                                        break;
+                                    }
+                                    foreach (var item in carData)
+                                    {
+                                        if (pCarStart == 0)
                                         {
-                                            if (carDataList[i].ID >= (cut23 - 2) || carDataList[i].ID <= (cut23 + 2))
-                                            {
-                                                startID = i;
-                                                break;
-                                            }
+                                            pCarStart = item.StartTime;
+                                            pCarEnd = item.EndTime;
+                                            pCarLeft = item.ID;
+                                            pCarRight = item.ID;
+                                            item.isUsed = 1;
                                         }
-                                        int leftSensorId = 0;
-                                        int rightSensorId = 0;
-
-                                        int lastLeftSensorId = carDataList[startID].ID;
-                                        int lastRightSensorId = carDataList[startID].ID;
-                                        for (int i = carDataList.Count / 2; i >= 0; i--)
+                                        if (item.isUsed == 0)
                                         {
-                                            if (lastLeftSensorId - carDataList[i].ID >= maxPassTime)
+                                            if (item.StartTime > (pCarStart - 200) && item.StartTime < (pCarStart + 200) && item.ID > (pCarLeft - maxPassTime) && item.ID < (pCarRight + maxPassTime))
                                             {
-                                                leftSensorId = lastLeftSensorId;
-                                                break;
-                                            }
-                                            lastLeftSensorId = carDataList[i].ID;
-                                            leftSensorId = lastLeftSensorId;
-                                        }
-                                        for (int i = carDataList.Count / 2; i < carDataList.Count; i++)
-                                        {
-                                            if (carDataList[i].ID - lastRightSensorId >= maxPassTime)
-                                            {
-                                                rightSensorId = lastRightSensorId;
-                                                break;
-                                            }
-                                            lastRightSensorId = carDataList[i].ID;
-                                            rightSensorId = lastRightSensorId;
-                                        }
-                                        foreach (var item in carData)
-                                        {
-                                            if (item.ID >= leftSensorId && item.ID <= rightSensorId)
-                                            {
+                                                pCarStart = pCarStart > item.StartTime ? item.StartTime : pCarStart;
+                                                pCarEnd = pCarEnd < item.EndTime ? item.EndTime : pCarEnd;
+                                                pCarRight = pCarRight < item.ID ? item.ID : pCarRight;
                                                 item.isUsed = 1;
                                             }
                                         }
-                                        AddNewCarToList(carDataList, leftCarStart, leftCarEnd, leftSensorId, rightSensorId, manager);
                                     }
-                                }
-                                else
-                                {
-                                    var carData = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime > leftCarStart && x.EndTime < leftCarEnd && x.ID < cut23).OrderBy(x => x.ID);
-                                    var carDataList = carData.ToList();
-                                    if (carData.Count() > minSensorCheckNum)
+                                    if (pCarRight - pCarLeft > minSensorSpanNum)
                                     {
-                                        int startID = carDataList.Count / 2;
-                                        int leftSensorId = 0;
-                                        int rightSensorId = 0;
-
-                                        int lastLeftSensorId = carDataList[startID].ID;
-                                        int lastRightSensorId = carDataList[startID].ID;
-                                        for (int i = carDataList.Count / 2; i >= 0; i--)
-                                        {
-                                            if (lastLeftSensorId - carDataList[i].ID >= maxPassTime)
-                                            {
-                                                leftSensorId = lastLeftSensorId;
-                                                break;
-                                            }
-                                            lastLeftSensorId = carDataList[i].ID;
-                                            leftSensorId = lastLeftSensorId;
-                                        }
-                                        for (int i = carDataList.Count / 2; i < carDataList.Count; i++)
-                                        {
-                                            if (carDataList[i].ID - lastRightSensorId >= maxPassTime)
-                                            {
-                                                rightSensorId = lastRightSensorId;
-                                                break;
-                                            }
-                                            lastRightSensorId = carDataList[i].ID;
-                                            rightSensorId = lastRightSensorId;
-                                        }
-                                        foreach (var item in carData)
-                                        {
-                                            if (item.ID >= leftSensorId && item.ID <= rightSensorId)
-                                            {
-                                                item.isUsed = 1;
-                                            }
-                                        }
-                                        AddNewCarToList(carDataList, leftCarStart, leftCarEnd, leftSensorId, rightSensorId, manager);
+                                        var carDataList = carData.Where(x => x.isUsed == 1 && x.StartTime >= pCarStart && x.EndTime <= pCarEnd && x.ID >= pCarLeft && x.ID <= pCarRight).ToList();
+                                        AddNewCarToList(carDataList, pCarStart, pCarEnd, pCarLeft, pCarRight, manager);
                                     }
                                 }
                             }
-                            //lastLeftCount = scanLeftCount;
-
-                            var scanTimeRightSensorList = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime <= scanTime && x.EndTime >= scanTime && x.ID >= cut23).OrderBy(x => x.ID);
-                            int scanRightCount = scanTimeRightSensorList.Count();
-                            int scanRightSpan = scanRightCount > 0 ? scanTimeRightSensorList.Max(x => x.ID) - scanTimeRightSensorList.Min(x => x.ID) : 0;
-
-                            //if (scanRightCount > lastRightCount && scanRightCount > minSensorCheckNum && !isRightInCar)
-                            if (scanRightCount > minSensorCheckNum && scanRightSpan > minSensorSpanNum && !isRightInCar) 
-                            {
-                                rightCarStart = scanTime - allowDifftime;
-                                isRightInCar = true;
-                            }
-                            if (scanRightCount <= 5 && isRightInCar)
-                            {
-                                int rightCarEnd = scanTime + allowDifftime;
-                                isRightInCar = false;
-                                if (isCut23)
-                                {
-                                    var carData = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime > rightCarStart && x.EndTime < rightCarEnd).OrderBy(x => x.ID);
-                                    var carDataList = carData.ToList();
-                                    if (carData.Count() > minSensorCheckNum)
-                                    {
-                                        int startID = 0;
-                                        for (int i = 0; i < carDataList.Count; i++)
-                                        {
-                                            if (carDataList[i].ID >= (cut23 - 2) || carDataList[i].ID <= (cut23 + 2))
-                                            {
-                                                startID = i;
-                                                break;
-                                            }
-                                        }
-                                        int leftSensorId = 0;
-                                        int rightSensorId = 0;
-
-                                        int lastLeftSensorId = carDataList[startID].ID;
-                                        int lastRightSensorId = carDataList[startID].ID;
-                                        for (int i = carDataList.Count / 2; i >= 0; i--)
-                                        {
-                                            if (lastLeftSensorId - carDataList[i].ID >= maxPassTime)
-                                            {
-                                                leftSensorId = lastLeftSensorId;
-                                                break;
-                                            }
-                                            lastLeftSensorId = carDataList[i].ID;
-                                            leftSensorId = lastLeftSensorId;
-                                        }
-                                        for (int i = carDataList.Count / 2; i < carDataList.Count; i++)
-                                        {
-                                            if (carDataList[i].ID - lastRightSensorId >= maxPassTime)
-                                            {
-                                                rightSensorId = lastRightSensorId;
-                                                break;
-                                            }
-                                            lastRightSensorId = carDataList[i].ID;
-                                            rightSensorId = lastRightSensorId;
-                                        }
-                                        foreach (var item in carData)
-                                        {
-                                            if (item.ID >= leftSensorId && item.ID <= rightSensorId)
-                                            {
-                                                item.isUsed = 1;
-                                            }
-                                        }
-                                        AddNewCarToList(carDataList, rightCarStart, rightCarEnd, leftSensorId, rightSensorId, manager);
-                                    }
-                                }
-                                else
-                                {
-                                    var carData = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime > rightCarStart && x.EndTime < rightCarEnd && x.ID >= cut23).OrderBy(x => x.ID);
-                                    var carDataList = carData.ToList();
-                                    if (carData.Count() > minSensorCheckNum)
-                                    {
-                                        int startID = carDataList.Count / 2;
-                                        int leftSensorId = 0;
-                                        int rightSensorId = 0;
-
-                                        int lastLeftSensorId = carDataList[startID].ID;
-                                        int lastRightSensorId = carDataList[startID].ID;
-                                        for (int i = carDataList.Count / 2; i >= 0; i--)
-                                        {
-                                            if (lastLeftSensorId - carDataList[i].ID >= maxPassTime)
-                                            {
-                                                leftSensorId = lastLeftSensorId;
-                                                break;
-                                            }
-                                            lastLeftSensorId = carDataList[i].ID;
-                                            leftSensorId = lastLeftSensorId;
-                                        }
-                                        for (int i = carDataList.Count / 2; i < carDataList.Count; i++)
-                                        {
-                                            if (carDataList[i].ID - lastRightSensorId >= maxPassTime)
-                                            {
-                                                rightSensorId = lastRightSensorId;
-                                                break;
-                                            }
-                                            lastRightSensorId = carDataList[i].ID;
-                                            rightSensorId = lastRightSensorId;
-                                        }
-                                        foreach (var item in carData)
-                                        {
-                                            if (item.ID >= leftSensorId && item.ID <= rightSensorId)
-                                            {
-                                                item.isUsed = 1;
-                                            }
-                                        }
-                                        AddNewCarToList(carDataList, rightCarStart, rightCarEnd, leftSensorId, rightSensorId, manager);
-                                    }
-                                }
-                            }
-                            //lastRightCount = scanRightCount;
                         }
 
                         int minError = 5;//传感器快慢不一的误差时间，目前误差在每分钟5毫秒左右  

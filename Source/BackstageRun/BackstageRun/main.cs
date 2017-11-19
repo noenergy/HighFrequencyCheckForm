@@ -184,6 +184,11 @@ namespace BackstageRun
                 try
                 {
                     DB.StartTask(task.TASKID);
+
+                    //先增加任务,防止可能的出错导致任务无法添加
+                    if (task.BEGINDATE.Equals(string.Empty))
+                        DB.WriteTask(task);
+
                     if (taskConfig[task.BR_ID].BR_TYPE.Equals(0))
                     {
                         string argStr = string.Format("{0} {1} {2} {3} {4}", taskConfig[task.BR_ID].BR_TYPE, taskConfig[task.BR_ID].DLLNAME, taskConfig[task.BR_ID].NAMESPACE_CLASS, taskConfig[task.BR_ID].FUNCTION_NAME, taskConfig[task.BR_ID].PARANUM);
@@ -227,9 +232,6 @@ namespace BackstageRun
 
                         DB.EndTask("2", task.TASKID, "", ret);
                         WriteLog(task.BR_ID, "Run Success" + ret);
-
-                        if (task.BEGINDATE.Equals(string.Empty))
-                            DB.WriteTask(task);
 
                         AddScreenLog addLog = delegate ()
                         {
