@@ -24,8 +24,11 @@ static _ConnectionPtr m_pConnection;
 static _RecordsetPtr m_pRecordset;
 
 void ConnectUdp(void);
+void RESET_TIME_BY_UDP(void);
 void ConnectSql(void);
 void ExitConnect(void);
+int chartoint(unsigned char, unsigned char *);
+int strtodata(unsigned char *, unsigned char *, int, int);
 
 _RecordsetPtr&GetRecordset(_bstr_t);
 
@@ -35,40 +38,13 @@ int readyCount = 0;
 int resetCount = 0;
 int mustCloseCount = 0;
 
-bool isGetPath = false;
-string pathStr;
-
 HANDLE hcom;
 BYTE SendData[8];
-//BYTE SendData[8] = { 0xAA, 0x06, 0x00, 0x01, 0x00, 0x03, 0x81, 0xD0 };
 
-DWORD WINAPI SEND_SIGNAL(LPVOID lpParamter)
+DWORD WINAPI RESET_CAR_CHECK_FLAG(LPVOID lpParamter)
 {
-	try
-	{
-		cout << "信号发送线程启动成功!" << endl;
-
-		char path[_MAX_PATH];
-		//bool isGetPath = false;
-		//string pathStr;
-		if (_getcwd(path, _MAX_PATH) == NULL)
-		{
-			cout << "地址获取错误!" << endl;
-		}
-		else
-		{
-			pathStr.assign(path);
-			pathStr = pathStr + "\\SendToPort485.exe";
-			//cout << pathStr << endl;
-			isGetPath = true;
-		}
-	}
-	catch (_com_error e)
-	{
-		cout << "信号发送线程启动失败!" << endl;
-		cout << e.Description() << endl;
-	}
-	while(true)
+	cout << "重置车辆计算标识线程启动成功!" << endl;
+	while (true)
 	{
 		try
 		{
@@ -77,66 +53,17 @@ DWORD WINAPI SEND_SIGNAL(LPVOID lpParamter)
 				if (readyCount > 20) //多久无车关闭秒数
 				{
 					///////////////////////////		
-					//isReset = true; //暂时没用
 					isStop = true;
 					readyCount = 0;
 					mustCloseCount = 0;
-					//////C++发送信号逻辑
-					DWORD dwWrittenLen = 0;
-					if (!WriteFile(hcom, SendData, 8, &dwWrittenLen, NULL))
-					{
-						DWORD err = GetLastError();
-						if (err != ERROR_IO_PENDING)
-						{
-							cout << "发送串口数据失败!" << endl;
-							system("SHUTDOWN -R -T 0");
-						}
-						else
-						{
-							///////////////////////////
-							cout << "关闭传感器指令进入队列!" << endl;
-							m_pRecordset->AddNew();
-							m_pRecordset->PutCollect("ID", _variant_t(0));
-							m_pRecordset->PutCollect("FLAG", _variant_t(-1));
-							m_pRecordset->PutCollect("VALUE", _variant_t(0));
-							m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
-							m_pRecordset->Update();
-						}
-					}
-					else
-					{
-						///////////////////////////
-						cout << "关闭传感器系统!" << endl;
-						m_pRecordset->AddNew();
-						m_pRecordset->PutCollect("ID", _variant_t(0));
-						m_pRecordset->PutCollect("FLAG", _variant_t(-1));
-						m_pRecordset->PutCollect("VALUE", _variant_t(0));
-						m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
-						m_pRecordset->Update();
-					}
 					///////////////////////////
-					//发送信号逻辑
-					//if (isGetPath)
-					//{
-					//	WinExec(pathStr.c_str(), SWP_HIDEWINDOW);
-					//	///////////////////////////		
-					//	//isReset = true; //暂时没用
-					//	isStop = true;
-					//	readyCount = 0;
-					//	mustCloseCount = 0;
-					//	///////////////////////////
-					//	cout << "关闭传感器系统!" << endl;
-					//	m_pRecordset->AddNew();
-					//	m_pRecordset->PutCollect("ID", _variant_t(0));
-					//	m_pRecordset->PutCollect("FLAG", _variant_t(-1));
-					//	m_pRecordset->PutCollect("VALUE", _variant_t(0));
-					//	m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
-					//	m_pRecordset->Update();
-					//}
-					//else
-					//{
-					//	cout << "未获取到关停插件地址!" << endl;
-					//}
+					cout << "重置车辆计算!" << endl;
+					m_pRecordset->AddNew();
+					m_pRecordset->PutCollect("ID", _variant_t(0));
+					m_pRecordset->PutCollect("FLAG", _variant_t(-1));
+					m_pRecordset->PutCollect("VALUE", _variant_t(0));
+					m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
+					m_pRecordset->Update();
 				}
 				else
 				{
@@ -153,8 +80,9 @@ DWORD WINAPI SEND_SIGNAL(LPVOID lpParamter)
 	return 0;
 }
 
-DWORD WINAPI RESET_UDP(LPVOID lpParamter)
+DWORD WINAPI FORCE_RESET_CAR_CHECK_FLAG(LPVOID lpParamter)
 {
+	cout << "强制重置车辆计算标识线程启动成功!" << endl;
 	while (true)
 	{
 		try
@@ -164,65 +92,17 @@ DWORD WINAPI RESET_UDP(LPVOID lpParamter)
 				if (mustCloseCount > 300)
 				{
 					///////////////////////////		
-					//isReset = true; //暂时没用
 					isStop = true;
 					readyCount = 0;
 					mustCloseCount = 0;
-					////////C++发送信号逻辑
-					DWORD dwWrittenLen = 0;
-					if (!WriteFile(hcom, SendData, 8, &dwWrittenLen, NULL))
-					{
-						DWORD err = GetLastError();
-						if (err != ERROR_IO_PENDING)
-						{
-							cout << "发送串口数据失败!" << endl;
-							system("SHUTDOWN -R -T 0");
-						}
-						else
-						{
-							///////////////////////////
-							cout << "强制关闭传感器指令进入队列!" << endl;
-							m_pRecordset->AddNew();
-							m_pRecordset->PutCollect("ID", _variant_t(0));
-							m_pRecordset->PutCollect("FLAG", _variant_t(-1));
-							m_pRecordset->PutCollect("VALUE", _variant_t(0));
-							m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
-							m_pRecordset->Update();
-						}
-					}
-					else
-					{
-						///////////////////////////
-						cout << "强制关闭传感器系统!" << endl;
-						m_pRecordset->AddNew();
-						m_pRecordset->PutCollect("ID", _variant_t(0));
-						m_pRecordset->PutCollect("FLAG", _variant_t(-1));
-						m_pRecordset->PutCollect("VALUE", _variant_t(0));
-						m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
-						m_pRecordset->Update();
-					}
 					///////////////////////////
-					//发送信号逻辑
-					//if (isGetPath)
-					//{
-					//	WinExec(pathStr.c_str(), SWP_HIDEWINDOW);
-					//	isStop = true;
-					//	///////////////////////////
-					//	readyCount = 0;
-					//	mustCloseCount = 0;
-					//	///////////////////////////
-					//	cout << "强制关闭传感器系统!" << endl;
-					//	m_pRecordset->AddNew();
-					//	m_pRecordset->PutCollect("ID", _variant_t(0));
-					//	m_pRecordset->PutCollect("FLAG", _variant_t(-1));
-					//	m_pRecordset->PutCollect("VALUE", _variant_t(0));
-					//	m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
-					//	m_pRecordset->Update();
-					//}
-					//else
-					//{
-					//	cout << "未获取到关停插件地址!" << endl;
-					//}
+					cout << "强制重置车辆计算!" << endl;
+					m_pRecordset->AddNew();
+					m_pRecordset->PutCollect("ID", _variant_t(0));
+					m_pRecordset->PutCollect("FLAG", _variant_t(-1));
+					m_pRecordset->PutCollect("VALUE", _variant_t(0));
+					m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
+					m_pRecordset->Update();
 				}
 				else
 				{
@@ -244,7 +124,6 @@ DWORD WINAPI RESET_UDP(LPVOID lpParamter)
 	return 0;
 }
 
-
 int _tmain(int argc, _TCHAR* argv[])
 {
 	try
@@ -256,62 +135,33 @@ int _tmain(int argc, _TCHAR* argv[])
 		_bstr_t bstr_t(sql.c_str());
 		m_pRecordset=GetRecordset(bstr_t);
 
-		////打开串口端口
-		hcom = CreateFile(L"COM6", GENERIC_WRITE, 0, NULL, OPEN_EXISTING
-			, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (hcom == INVALID_HANDLE_VALUE)
-		{
-			cout << "打开串口失败!" << endl;
-			//exit(0);
-		}
-		else
-		{
-			cout << "打开串口成功!" << endl;
-		}
-		DCB dcb;
-		SetupComm(hcom, 4096, 2048);
-		GetCommState(hcom, &dcb);
-		dcb.BaudRate = 9600;
-		dcb.ByteSize = 8;
-		dcb.Parity = 0;
-		dcb.StopBits = 0;   //0为1;1为1.5;2为2
-		SetCommState(hcom, &dcb);
-
-		//给信号数据赋值
-		SendData[0] = 0xAA; 
-		SendData[1] = 0x06;
-		SendData[2] = 0x00;
-		SendData[3] = 0x01; 
-		SendData[4] = 0x00; 
-		SendData[5] = 0x03;
-		SendData[6] = 0x81;
-		SendData[7] = 0xD0;
-
-		//打开发送关闭信号线程
+		//打开重置车辆计算标识线程
 		try
 		{
-			HANDLE hThread = CreateThread(NULL, 0, SEND_SIGNAL, NULL, 0, NULL);
-			CloseHandle(hThread);			
+			HANDLE hThread = CreateThread(NULL, 0, RESET_CAR_CHECK_FLAG, NULL, 0, NULL);
+			CloseHandle(hThread);
 		}
 		catch (_com_error e)
 		{
-			cout << "信号发送线程启动失败!" << endl;
+			cout << "重置车辆计算标识线程启动失败!" << endl;
 			throw e;
 		}
 
 		ConnectUdp();
 
-		//打开传感器重置线程
+		//打开强制重置车辆计算标识线程
 		try
 		{
-			HANDLE hThread = CreateThread(NULL, 0, RESET_UDP, NULL, 0, NULL);
+			HANDLE hThread = CreateThread(NULL, 0, FORCE_RESET_CAR_CHECK_FLAG, NULL, 0, NULL);
 			CloseHandle(hThread);
 		}
 		catch (_com_error e)
 		{
-			cout << "传感器重置线程启动失败!" << endl;
+			cout << "强制重置车辆计算标识线程启动失败!" << endl;
 			throw e;
 		}
+
+		ConnectUdp();
 
 		BYTE RecBuf[2048];
 		int i = 0;
@@ -319,9 +169,6 @@ int _tmain(int argc, _TCHAR* argv[])
 		cout << "开始数据接收，请勿关闭该界面!" << endl;
 		while (true)
 		{			
-			//CString str, tmpstr;
-			i = 0;
-			Len = 0;
 			Reslut = 0;
 
 			//UDP接收 
@@ -334,37 +181,29 @@ int _tmain(int argc, _TCHAR* argv[])
 				return 0;
 			}
 
-			Len = Reslut / 13;
-
-			//收到数据且UDP包完整
-			if (Len > 0 && Reslut % 13 == 0)
+			if (isStop)
 			{
-				for (i = 0; i < Len; i++)
-				{
-					INT id, flag, value, topdata, time;
-					id=(INT)(RecBuf[i * 13 + 3]*256 +RecBuf[i * 13 + 4]);
-					flag=(INT)(RecBuf[i * 13 + 5]); 
-					value=(INT)(RecBuf[i * 13 + 6]*256 + RecBuf[i * 13 + 7]);
-					topdata = (INT)RecBuf[i * 13 + 8] % 64;
-					time = (INT)(topdata * 4294967296 + RecBuf[i * 13 + 9] * 16777216 + RecBuf[i * 13 + 10] * 65536 + RecBuf[i * 13 + 11] * 256 + RecBuf[i * 13 + 12]);
-
-					////传感器测量到的高度大于2.1米即定义为有卡车通过(总高度大约为5.8米)
-					if (value < 3700)
-					{
-						readyCount = 0;
-						isStop = false;
-						//cout << "重新开始接收..." << endl;
-					}
-
-					m_pRecordset->AddNew();
-					m_pRecordset->PutCollect("ID", _variant_t(id));
-					m_pRecordset->PutCollect("FLAG", _variant_t(flag));
-					m_pRecordset->PutCollect("VALUE", _variant_t(value));
-					m_pRecordset->PutCollect("SENSORTIME", _variant_t(time));
-					m_pRecordset->Update();
-				}
+				RESET_TIME_BY_UDP();
+				isStop = false;
+				readyCount = 0;
 			}
-			//Sleep(1000);
+			else
+			{
+				readyCount = 0;
+			}
+
+			INT id, flag, value, time;
+			id = (INT)(RecBuf[3] * 256 + RecBuf[4]);
+			flag = (INT)(RecBuf[5]);
+			value = (INT)(RecBuf[6] * 256 + RecBuf[7]);
+			time = (INT)(RecBuf[9] * 16777216 + RecBuf[10] * 65536 + RecBuf[11] * 256 + RecBuf[12]);
+
+			m_pRecordset->AddNew();
+			m_pRecordset->PutCollect("ID", _variant_t(id));
+			m_pRecordset->PutCollect("FLAG", _variant_t(flag));
+			m_pRecordset->PutCollect("VALUE", _variant_t(value));
+			m_pRecordset->PutCollect("SENSORTIME", _variant_t(time));
+			m_pRecordset->Update();
 		}
 		ExitConnect();
 	}
@@ -432,6 +271,128 @@ void ConnectUdp()
 		cout << "打开UDP连接失败!" << endl;
 		cout << e.Description() << endl;
 	}
+}
+
+///重置时间
+void RESET_TIME_BY_UDP()
+{
+	//触发后沉默0.5s
+	Sleep(700);
+	try
+	{
+		unsigned char Data[13];
+		char szData[40];
+		BYTE DataLen = 0;
+		char SendBuf[13];
+
+		//SockDestCan
+		int m_DevPort = 4000;
+		SOCKADDR_IN SockDestCan;
+		SockDestCan.sin_family = AF_INET;
+		SockDestCan.sin_port = htons(m_DevPort);
+		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.108");
+
+		//准备13字节的数据
+		strcpy_s(szData, "08 00 00 00 01 F1 00 00 00 00 00 00 00");
+		strtodata((unsigned char*)szData, Data, 13, 1);
+		memcpy(SendBuf, Data, sizeof(Data));
+
+		if (sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR)) == SOCKET_ERROR)
+		{
+			cout << "UDP 发送失败" << endl;
+			cout << WSAGetLastError() << endl;
+		}
+		else
+		{
+			cout << "UDP 发送成功" << endl;
+			m_pRecordset->AddNew();
+			m_pRecordset->PutCollect("ID", _variant_t(0));
+			m_pRecordset->PutCollect("FLAG", _variant_t(-1));
+			m_pRecordset->PutCollect("VALUE", _variant_t(0));
+			m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
+			m_pRecordset->Update();
+		}
+		cout << "重置传感器时间成功!" << endl;
+
+		strcpy_s(szData, "88 FF FF FF FF F1 00 00 00 00 00 00 00");
+		strtodata((unsigned char*)szData, Data, 13, 1);
+		memcpy(SendBuf, Data, sizeof(Data));
+
+		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.101");
+		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.102");
+		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.103");
+		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.104");
+		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.105");
+		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.106");
+		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.107");
+		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+	}
+	catch (_com_error e)
+	{
+		cout << e.Description() << endl;
+	}
+}
+
+
+//-----------------------------------------------------
+//参数：
+//str：要转换的字符串
+//data：储存转换过来的数据串
+//len:数据长度
+//函数功能：字符串转换为数据串
+//-----------------------------------------------------
+int strtodata(unsigned char *str, unsigned char *data, int len, int flag)
+{
+	unsigned char cTmp = 0;
+	int i = 0;
+	for (int j = 0; j<len; j++)
+	{
+		if (chartoint(str[i++], &cTmp))
+			return 1;
+		data[j] = cTmp;
+		if (chartoint(str[i++], &cTmp))
+			return 1;
+		data[j] = (data[j] << 4) + cTmp;
+		if (flag == 1)
+			i++;
+	}
+	return 0;
+}
+
+//-----------------------------------------------------
+//参数：
+//chr：要转换的字符
+//cint：储存转换过来的数据
+//函数功能：字符转换为数据
+//-----------------------------------------------------
+int chartoint(unsigned char chr, unsigned char *cint)
+{
+	unsigned char cTmp;
+	cTmp = chr - 48;
+	if (cTmp >= 0 && cTmp <= 9)
+	{
+		*cint = cTmp;
+		return 0;
+	}
+	cTmp = chr - 65;
+	if (cTmp >= 0 && cTmp <= 5)
+	{
+		*cint = (cTmp + 10);
+		return 0;
+	}
+	cTmp = chr - 97;
+	if (cTmp >= 0 && cTmp <= 5)
+	{
+		*cint = (cTmp + 10);
+		return 0;
+	}
+	return 1;
 }
 
 ///连接数据库
