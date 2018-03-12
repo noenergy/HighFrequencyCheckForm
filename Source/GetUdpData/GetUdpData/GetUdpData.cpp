@@ -128,6 +128,17 @@ int _tmain(int argc, _TCHAR* argv[])
 {
 	try
 	{	
+		int iii = 231;
+		char h[5];
+		char hs[5];
+
+		_ltoa_s(iii, h, 16);
+
+		sprintf_s(hs, "%04s", h);
+
+		printf("i=%d,hs=%s\n", iii, hs);
+		Sleep(1000000);
+
 		//连接数据库
 		//覆盖外部声明
 		_RecordsetPtr m_pRecordset;
@@ -161,8 +172,6 @@ int _tmain(int argc, _TCHAR* argv[])
 			throw e;
 		}
 
-		ConnectUdp();
-
 		BYTE RecBuf[2048];
 		int i = 0;
 		int Len = 0, Reslut;
@@ -178,7 +187,8 @@ int _tmain(int argc, _TCHAR* argv[])
 			{
 				cout << "Receive Error" << endl;
 				WSACleanup();
-				return 0;
+				continue;
+				//return 0;
 			}
 
 			if (isStop)
@@ -290,48 +300,73 @@ void RESET_TIME_BY_UDP()
 		SOCKADDR_IN SockDestCan;
 		SockDestCan.sin_family = AF_INET;
 		SockDestCan.sin_port = htons(m_DevPort);
-		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.108");
+		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.101");
 
 		//准备13字节的数据
 		strcpy_s(szData, "08 00 00 00 01 F1 00 00 00 00 00 00 00");
 		strtodata((unsigned char*)szData, Data, 13, 1);
 		memcpy(SendBuf, Data, sizeof(Data));
 
-		if (sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR)) == SOCKET_ERROR)
-		{
-			cout << "UDP 发送失败" << endl;
-			cout << WSAGetLastError() << endl;
-		}
-		else
-		{
-			cout << "UDP 发送成功" << endl;
-			m_pRecordset->AddNew();
-			m_pRecordset->PutCollect("ID", _variant_t(0));
-			m_pRecordset->PutCollect("FLAG", _variant_t(-1));
-			m_pRecordset->PutCollect("VALUE", _variant_t(0));
-			m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
-			m_pRecordset->Update();
-		}
-		cout << "重置传感器时间成功!" << endl;
+		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		//if (sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR)) == SOCKET_ERROR)
+		//{
+		//	cout << "UDP 发送失败" << endl;
+		//	cout << WSAGetLastError() << endl;
+		//}
+		//else
+		//{
+		//	cout << "UDP 发送成功" << endl;
+		//	m_pRecordset->AddNew();
+		//	m_pRecordset->PutCollect("ID", _variant_t(0));
+		//	m_pRecordset->PutCollect("FLAG", _variant_t(-1));
+		//	m_pRecordset->PutCollect("VALUE", _variant_t(0));
+		//	m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
+		//	m_pRecordset->Update();
+		//}
+		//cout << "重置传感器时间成功!" << endl;
 
-		strcpy_s(szData, "88 FF FF FF FF F1 00 00 00 00 00 00 00");
-		strtodata((unsigned char*)szData, Data, 13, 1);
-		memcpy(SendBuf, Data, sizeof(Data));
+		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.108");
+		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
 
-		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.101");
-		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.102");
-		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.103");
-		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.104");
-		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.105");
-		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.106");
-		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.107");
-		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		char addressStart[11] = "192.1.0.10";
+		char addressEnd[2] = "0";
+		char address[12] = "192.1.0.100";
+
+		for (int i = 34; i <= 231; i++)
+		{
+			strcpy_s(szData, "08 00 00 FF FF F1 00 00 00 00 00 00 00");
+			strtodata((unsigned char*)szData, Data, 13, 1);
+			memcpy(SendBuf, Data, sizeof(Data));
+
+			if (i % 33 == 0)
+			{
+				*addressEnd = char(i / 33 + 48);
+			}
+			else
+			{
+				*addressEnd = char(i / 33 + 49);
+			}
+			strcpy_s(address, addressStart);
+			strcat_s(address, addressEnd);
+
+			SockDestCan.sin_addr.S_un.S_addr = inet_addr(address);
+			sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		}
+
+		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.101");
+		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.102");
+		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.103");
+		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.104");
+		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.105");
+		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.106");
+		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.107");
+		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
 	}
 	catch (_com_error e)
 	{
