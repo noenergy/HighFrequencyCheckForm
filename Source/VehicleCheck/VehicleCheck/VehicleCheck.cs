@@ -34,6 +34,7 @@ namespace VehicleCheck
         class SensorTimeSpan
         {
             public int ID;
+            //public int Value;
             public int StartTime;
             public int EndTime;
             public DateTime PassTime;
@@ -349,7 +350,38 @@ namespace VehicleCheck
                         landId = 3;
                     }
                 }
-                ////////获取高度传感器数据
+                ////////获取高度传感器数据(OLD)
+                //int height = 0;
+                //EntityBase sensorDataEntity = new EntityBase("CAR_SOURCE", manager);
+                //WhereObjectList dataWhere = new WhereObjectList();
+                //dataWhere.add("SENSORTIME", WhereObjectType.GreaterThanOrEqualTo, inTime.ToString());
+                //dataWhere.add("SENSORTIME", WhereObjectType.LessThanOrEqualTo, outTime.ToString());
+                //dataWhere.add("FLAG", WhereObjectType.EqualTo, "0");
+                ////防止两车同行时获取大值出现误差
+                //dataWhere.add("VALUE", WhereObjectType.LessThan, "2000");
+                ////判断车道信息,选择占据更多那边的车道
+                //if ((maxWidthSensor - rightSensorId) < (leftSensorId - minWidthSensor))
+                //{
+                //    dataWhere.add("ID", WhereObjectType.GreaterThanOrEqualTo, maxWidthSensor);
+                //    DataTable highSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 1, "ID");
+                //    if (highSensorDataTable.Rows.Count > 0)
+                //    {
+                //        int maxHighId = (int)highSensorDataTable.Rows[0]["ID"];
+                //        height = (maxHighId - rightMinSensor + 1) * HeightSensorSpace + bridgeStartHeight;
+                //    }
+                //}
+                //else
+                //{
+                //    dataWhere.add("ID", WhereObjectType.LessThanOrEqualTo, minWidthSensor);
+                //    DataTable highSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 1, "ID DESC");
+                //    if (highSensorDataTable.Rows.Count > 0)
+                //    {
+                //        int maxHighId = (int)highSensorDataTable.Rows[0]["ID"];
+                //        height = (maxHighId - leftMinSensor + 1) * HeightSensorSpace + bridgeStartHeight;
+                //    }
+                //}
+
+                ////////获取高度传感器数据(NEW)
                 int height = 0;
                 EntityBase sensorDataEntity = new EntityBase("CAR_SOURCE", manager);
                 WhereObjectList dataWhere = new WhereObjectList();
