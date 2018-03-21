@@ -47,6 +47,7 @@ namespace VehicleCheck
             public int Height;
             public int StartTime;
             public int EndTime;
+            public int TimeSpan;
             public DateTime PassTime;
             public int LaneID;
             public string Remark;
@@ -76,6 +77,8 @@ namespace VehicleCheck
         int maxPassTime = 7;
         //去除最大最小传感器进入出去时间的数据数量
         int removeDataBase = 8;
+        //最大高度
+        int maxHeight = 600;
         /// <summary>
         /// 车道分割标识
         /// </summary>
@@ -127,12 +130,12 @@ namespace VehicleCheck
                 //开始id等于结束id，直接返回
                 if (startId.Equals(endId)) { return; }
 
-                //获取损坏传感器列表
-                EntityBase sensorEntity = new EntityBase("SENSOR_CONFIG", manager);
-                WhereObjectList sensorWhere = new WhereObjectList();
-                sensorWhere.add("SENSOR_STATUS", WhereObjectType.EqualTo, "0");
-                DataTable errSensorTable = manager.GetTableEx(sensorEntity, sensorWhere, 0, "");
-                var errSensorList = errSensorTable.AsEnumerable().Select(t => t.Field<int>("SENSOR_ID")).ToList();
+                ////获取损坏传感器列表
+                //EntityBase sensorEntity = new EntityBase("SENSOR_CONFIG", manager);
+                //WhereObjectList sensorWhere = new WhereObjectList();
+                //sensorWhere.add("SENSOR_STATUS", WhereObjectType.EqualTo, "0");
+                //DataTable errSensorTable = manager.GetTableEx(sensorEntity, sensorWhere, 0, "");
+                //var errSensorList = errSensorTable.AsEnumerable().Select(t => t.Field<int>("SENSOR_ID")).ToList();
 
                 //获取传感器分段数据
                 EntityBase breakEnenty = new EntityBase("CAR_SOURCE", manager);
@@ -248,6 +251,7 @@ namespace VehicleCheck
                                     pCarEnd = 0;
                                     pCarLeft = 0;
                                     pCarRight = 0;
+
                                     var carData = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime > CarStart && x.EndTime < CarEnd).OrderBy(x => x.ID);
                                     int scanDataCount = carData.Count();
                                     int scanDataSpan = scanDataCount > 0 ? carData.Max(x => x.ID) - carData.Min(x => x.ID) : 0;
@@ -289,11 +293,10 @@ namespace VehicleCheck
                         int fixedError = 70;//绝对误差
                         foreach (CarInfo car in carList)
                         {
-                            int timeSpan = (car.EndTime - car.StartTime);
                             EntityBase middleCarInfo = new EntityBase("MIDDLE_RESULT", manager);
                             middleCarInfo["WIDTH"] = car.Width;
                             middleCarInfo["HEIGHT"] = car.Height;
-                            middleCarInfo["TIMESPAN"] = timeSpan - (car.EndTime > 300000 ? 6 * minError : (((double)car.EndTime / 60000) * minError)) - fixedError;
+                            middleCarInfo["TIMESPAN"] = car.TimeSpan - (car.EndTime > 300000 ? 6 * minError : (((double)car.EndTime / 60000) * minError)) - fixedError;
                             middleCarInfo["PASSTIME"] = car.PassTime.ToString("yyyy-MM-dd HH:mm:ss.fff");
                             middleCarInfo["LANE_ID"] = car.LaneID;
                             middleCarInfo["REMARK"] = car.Remark;
@@ -383,92 +386,116 @@ namespace VehicleCheck
 
                 ////////获取高度传感器数据(NEW)
                 int height = 0;
-                EntityBase sensorDataEntity = new EntityBase("CAR_SOURCE", manager);
+                int realInTime = 0;
+                int realOutTime = 0;
+                int realPassTimeSpan = 0;
+                DateTime passTime;
+
+                EntityBase sensorDataEntity = new EntityBase("V_HEIGHT_TIME_DATA", manager);
                 WhereObjectList dataWhere = new WhereObjectList();
                 dataWhere.add("SENSORTIME", WhereObjectType.GreaterThanOrEqualTo, inTime.ToString());
                 dataWhere.add("SENSORTIME", WhereObjectType.LessThanOrEqualTo, outTime.ToString());
-                dataWhere.add("FLAG", WhereObjectType.EqualTo, "0");
-                //防止两车同行时获取大值出现误差
-                dataWhere.add("VALUE", WhereObjectType.LessThan, "2000");
-                //判断车道信息,选择占据更多那边的车道
-                if ((maxWidthSensor - rightSensorId) < (leftSensorId - minWidthSensor))
+                dataWhere.add("SENSOR_TYPE", WhereObjectType.EqualTo, "2");
+                dataWhere.add("ID", WhereObjectType.GreaterThanOrEqualTo, leftSensorId);
+                dataWhere.add("ID", WhereObjectType.LessThanOrEqualTo, rightSensorId);
+                DataTable highSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 0, "VALUE");
+                if (highSensorDataTable.Rows.Count > 0)
                 {
-                    dataWhere.add("ID", WhereObjectType.GreaterThanOrEqualTo, maxWidthSensor);
-                    DataTable highSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 1, "ID");
+                    height = maxHeight - (int)highSensorDataTable.Rows[0]["VALUE"];
+                    int realPassInTime = (int)highSensorDataTable.AsEnumerable().OrderBy(x => x["SENSORTIME"]).First()["SENSORTIME"];
+
+                    dataWhere.Clear();
+                    dataWhere.add("SENSORTIME", WhereObjectType.GreaterThanOrEqualTo, inTime.ToString());
+                    dataWhere.add("SENSORTIME", WhereObjectType.LessThanOrEqualTo, outTime.ToString());
+                    dataWhere.add("SENSOR_TYPE", WhereObjectType.EqualTo, "3");
+                    dataWhere.add("ID", WhereObjectType.GreaterThanOrEqualTo, leftSensorId);
+                    dataWhere.add("ID", WhereObjectType.LessThanOrEqualTo, rightSensorId);
+                    DataTable timeSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 0, "SENSORTIME");
+                    int realPassOutTime = (int)timeSensorDataTable.AsEnumerable().OrderBy(x => x["SENSORTIME"]).First()["SENSORTIME"];
+                    realPassTimeSpan = realPassOutTime - realPassInTime;
+                    
+                    //计算车辆在龙门架下通过的时间间隔
+
+
+                    passTime = (DateTime)highSensorDataTable.Rows[0]["PASSTIME"];
+                }
+                else  //原始传感器采样
+                {
+                    //高度部分
+                    dataWhere.Clear();
+                    dataWhere.add("SENSORTIME", WhereObjectType.GreaterThanOrEqualTo, inTime.ToString());
+                    dataWhere.add("SENSORTIME", WhereObjectType.LessThanOrEqualTo, outTime.ToString());
+                    dataWhere.add("SENSOR_TYPE", WhereObjectType.EqualTo, "1");
+                    dataWhere.add("ID", WhereObjectType.GreaterThanOrEqualTo, leftSensorId);
+                    dataWhere.add("ID", WhereObjectType.LessThanOrEqualTo, rightSensorId);
+                    highSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 0, "VALUE");
                     if (highSensorDataTable.Rows.Count > 0)
                     {
-                        int maxHighId = (int)highSensorDataTable.Rows[0]["ID"];
-                        height = (maxHighId - rightMinSensor + 1) * HeightSensorSpace + bridgeStartHeight;
+                        height = maxHeight - (int)highSensorDataTable.Rows[0]["VALUE"];
                     }
-                }
-                else
-                {
-                    dataWhere.add("ID", WhereObjectType.LessThanOrEqualTo, minWidthSensor);
-                    DataTable highSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 1, "ID DESC");
-                    if (highSensorDataTable.Rows.Count > 0)
+                    else
                     {
-                        int maxHighId = (int)highSensorDataTable.Rows[0]["ID"];
-                        height = (maxHighId - leftMinSensor + 1) * HeightSensorSpace + bridgeStartHeight;
+                        height = 0;
                     }
-                }
 
-                /////////////////////
-                //时间筛选
-                List<int> inTimeList = new List<int>();
-                List<int> outTimeList = new List<int>();
-                List<int> timeSpanList = new List<int>();
-                var sensorList = carData.Where(k => k.ID >= leftSensorId & k.ID <= rightSensorId);
-                foreach (SensorTimeSpan existSTS in sensorList)
-                {
-                    inTimeList.Add(existSTS.StartTime);
-                    outTimeList.Add(existSTS.EndTime);
-                    timeSpanList.Add(existSTS.EndTime - existSTS.StartTime);
-                }
-                if (inTimeList.Count < 14)
-                {
-                    int newRemoveBase = inTimeList.Count() / 3;
-                    //正向排序取第6个进入的时间
-                    inTimeList.Sort((x, y) => x.CompareTo(y));
-                    inTimeList.RemoveRange(0, newRemoveBase);
-                    //逆向排序取倒数第6个出去的时间
-                    outTimeList.Sort((x, y) => -x.CompareTo(y));
-                    outTimeList.RemoveRange(0, newRemoveBase);
-
-                    int removeTimeSpanBase = (timeSpanList.Count() / 2 - 2);
-                    if (removeTimeSpanBase >= 0)
+                    /////////////////////
+                    //时间筛选
+                    List<int> inTimeList = new List<int>();
+                    List<int> outTimeList = new List<int>();
+                    List<int> timeSpanList = new List<int>();
+                    var sensorList = carData.Where(k => k.ID >= leftSensorId & k.ID <= rightSensorId);
+                    foreach (SensorTimeSpan existSTS in sensorList)
                     {
+                        inTimeList.Add(existSTS.StartTime);
+                        outTimeList.Add(existSTS.EndTime);
+                        timeSpanList.Add(existSTS.EndTime - existSTS.StartTime);
+                    }
+                    if (inTimeList.Count < 14)
+                    {
+                        int newRemoveBase = inTimeList.Count() / 3;
+                        //正向排序取第6个进入的时间
+                        inTimeList.Sort((x, y) => x.CompareTo(y));
+                        inTimeList.RemoveRange(0, newRemoveBase);
+                        //逆向排序取倒数第6个出去的时间
+                        outTimeList.Sort((x, y) => -x.CompareTo(y));
+                        outTimeList.RemoveRange(0, newRemoveBase);
+
+                        int removeTimeSpanBase = (timeSpanList.Count() / 2 - 2);
+                        if (removeTimeSpanBase >= 0)
+                        {
+                            timeSpanList.Sort((x, y) => x.CompareTo(y));
+                            timeSpanList.RemoveRange(0, removeTimeSpanBase);
+                            timeSpanList.Sort((x, y) => -x.CompareTo(y));
+                            timeSpanList.RemoveRange(0, removeTimeSpanBase);
+                        }
+                    }
+                    else
+                    {
+                        //正向排序取第6个进入的时间
+                        inTimeList.Sort((x, y) => x.CompareTo(y));
+                        inTimeList.RemoveRange(0, removeDataBase);
+                        //逆向排序取倒数第6个出去的时间
+                        outTimeList.Sort((x, y) => -x.CompareTo(y));
+                        outTimeList.RemoveRange(0, removeDataBase);
+
+                        int removeTimeSpanBase = (timeSpanList.Count() / 2 - 2);
                         timeSpanList.Sort((x, y) => x.CompareTo(y));
                         timeSpanList.RemoveRange(0, removeTimeSpanBase);
                         timeSpanList.Sort((x, y) => -x.CompareTo(y));
                         timeSpanList.RemoveRange(0, removeTimeSpanBase);
                     }
-                }
-                else
-                {
-                    //正向排序取第6个进入的时间
-                    inTimeList.Sort((x, y) => x.CompareTo(y));
-                    inTimeList.RemoveRange(0, removeDataBase);
-                    //逆向排序取倒数第6个出去的时间
-                    outTimeList.Sort((x, y) => -x.CompareTo(y));
-                    outTimeList.RemoveRange(0, removeDataBase);
 
-                    int removeTimeSpanBase = (timeSpanList.Count() / 2 - 2);
-                    timeSpanList.Sort((x, y) => x.CompareTo(y));
-                    timeSpanList.RemoveRange(0, removeTimeSpanBase);
-                    timeSpanList.Sort((x, y) => -x.CompareTo(y));
-                    timeSpanList.RemoveRange(0, removeTimeSpanBase);
-                }     
-
-                if (inTimeList.Count == 0 || outTimeList.Count == 0)
-                {
-                    return;
+                    if (inTimeList.Count == 0 || outTimeList.Count == 0)
+                    {
+                        return;
+                    }
+                    realInTime = inTimeList[0];
+                    realOutTime = outTimeList[0];
+                    int realTimeSpan = (int)timeSpanList.Average();
+                    realOutTime = realInTime + realTimeSpan;
+                    passTime = carData.Where(x => x.StartTime == realInTime).First().PassTime;
+                    /////////////////////
                 }
-                int realInTime = inTimeList[0];
-                int realOutTime = outTimeList[0];
-                int realTimeSpan = (int)timeSpanList.Average();
-                realOutTime = realInTime + realTimeSpan;
-                DateTime passTime = carData.Where(x => x.StartTime == realInTime).First().PassTime;
-                /////////////////////
 
                 //int origanialWidth = (rightSensorId - leftSensorId + 1) * sensorSpace;
                 int origanialWidth = (rightSensorId - leftSensorId) * sensorSpace;
@@ -493,6 +520,7 @@ namespace VehicleCheck
                 car.Width = width;
                 car.StartTime = realInTime;
                 car.EndTime = realOutTime;
+                car.TimeSpan = realPassTimeSpan;
                 car.PassTime = passTime;
                 car.LaneID = landId;
                 car.Remark = string.Format("W:{0} I:{1} O:{2} L:{3} R:{4} RL:{5} RR:{6}", origanialWidth, inTime, outTime, leftSensorId, rightSensorId, mostLeftId, mostRightId);
@@ -530,21 +558,21 @@ namespace VehicleCheck
                 if (!manager.GetEntity(ref operationEntity)) { throw new Exception("最后读取的中间车辆结果丢失!"); }
                 string readEnd = operationEntity["VALUE"].ToString();
 
-                //获取模范测量
-                operationEntity.SetNothing();
-                operationEntity["TYPE"] = "TEMP_PLATE";
-                manager.GetEntity(ref operationEntity);
-                string[] tempPlate = operationEntity["TYPE_DESC"].ToString().Split(',');
-                operationEntity.SetNothing();
-                operationEntity["TYPE"] = "TEMP_LENGTH";
-                manager.GetEntity(ref operationEntity);
-                string[] tempLength = operationEntity["TYPE_DESC"].ToString().Split(',');
-                operationEntity.SetNothing();
-                operationEntity["TYPE"] = "TEMP_WIDTH";
-                manager.GetEntity(ref operationEntity);
-                string[] tempWidth = operationEntity["TYPE_DESC"].ToString().Split(',');
-                Random addOrMove = new Random();
-                Random changeValue = new Random();
+                ////获取模范测量
+                //operationEntity.SetNothing();
+                //operationEntity["TYPE"] = "TEMP_PLATE";
+                //manager.GetEntity(ref operationEntity);
+                //string[] tempPlate = operationEntity["TYPE_DESC"].ToString().Split(',');
+                //operationEntity.SetNothing();
+                //operationEntity["TYPE"] = "TEMP_LENGTH";
+                //manager.GetEntity(ref operationEntity);
+                //string[] tempLength = operationEntity["TYPE_DESC"].ToString().Split(',');
+                //operationEntity.SetNothing();
+                //operationEntity["TYPE"] = "TEMP_WIDTH";
+                //manager.GetEntity(ref operationEntity);
+                //string[] tempWidth = operationEntity["TYPE_DESC"].ToString().Split(',');
+                //Random addOrMove = new Random();
+                //Random changeValue = new Random();
 
                 //获取本地中转数据
                 EntityBase middleResultEntity = new EntityBase("MIDDLE_RESULT", manager);
@@ -605,42 +633,45 @@ namespace VehicleCheck
                             string plate = string.Empty;
                             string path = string.Empty;
 
+                            //老的速度算法
+                            //speed = double.Parse(passInfoTable.Rows[0]["SPEED"].ToString());
+                            //speed = speed > 40 ? speed : speed * 4;
+                            //新的速度算法
                             speed = double.Parse(passInfoTable.Rows[0]["SPEED"].ToString());
-                            speed = speed > 40 ? speed : speed * 4;
                             plate = passInfoTable.Rows[0]["CAR_PLATE"].ToString();
                             path = passInfoTable.Rows[0]["IMG_PATH"].ToString();
 
                             double lenght = speed * (double.Parse(dr["TIMESPAN"].ToString())) / 36;//单位为cm
                             double width = double.Parse(dr["WIDTH"].ToString());
 
-                            ////对width做补充
-                            if (width > 160 && width < 220)
-                            {
-                                if (addOrMove.Next(1, 10) > 5)
-                                {
-                                    width = 235 - (r.Next(0, 6) * 2.5);
-                                }
-                                else
-                                {
-                                    width = 235 + (r.Next(0, 6) * 2.5);
-                                }
-                            }
-                            else
-                            {
-                                if (addOrMove.Next(1, 13) > 7)
-                                {
-                                    width = width - 2.5;
-                                }
-                            }
-                            ////对lenght做补充
-                            if (lenght >= 1550 && lenght < 1700)
-                            {
-                                lenght = 1600;
-                            }
-                            if (lenght < 1650)
-                            {
-                                lenght = Math.Round((lenght / 100.0), MidpointRounding.AwayFromZero) * 100 + (r.Next(159, 181) / 10.0);
-                            }
+                            //////对width做补充
+                            //if (width > 160 && width < 220)
+                            //{
+                            //    if (addOrMove.Next(1, 10) > 5)
+                            //    {
+                            //        width = 235 - (r.Next(0, 6) * 2.5);
+                            //    }
+                            //    else
+                            //    {
+                            //        width = 235 + (r.Next(0, 6) * 2.5);
+                            //    }
+                            //}
+                            //else
+                            //{
+                            //    if (addOrMove.Next(1, 13) > 7)
+                            //    {
+                            //        width = width - 2.5;
+                            //    }
+                            //}
+                            //////对lenght做补充
+                            //if (lenght >= 1550 && lenght < 1700)
+                            //{
+                            //    lenght = 1600;
+                            //}
+                            //if (lenght < 1650)
+                            //{
+                            //    lenght = Math.Round((lenght / 100.0), MidpointRounding.AwayFromZero) * 100 + (r.Next(159, 181) / 10.0);
+                            //}
                             ////匹配模板测量
                             //for (int i = 0; i < tempPlate.Length; i++)
                             //{
