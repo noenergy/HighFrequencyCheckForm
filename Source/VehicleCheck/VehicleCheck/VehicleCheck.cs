@@ -76,9 +76,11 @@ namespace VehicleCheck
         //最大可跳开传感器数量
         int maxPassTime = 7;
         //去除最大最小传感器进入出去时间的数据数量
-        int removeDataBase = 8;
+        int removeDataBase = 6;
         //最大高度
         int maxHeight = 600;
+        //测速区域长度(m)
+        double speedAreaLength = 22.6;
         /// <summary>
         /// 车道分割标识
         /// </summary>
@@ -386,8 +388,8 @@ namespace VehicleCheck
 
                 ////////获取高度传感器数据(NEW)
                 int height = 0;
-                int realInTime = 0;
-                int realOutTime = 0;
+                int realInTime = int.MaxValue;
+                int realOutTime = int.MinValue;
                 int realPassTimeSpan = 0;
                 DateTime passTime;
 
@@ -404,6 +406,24 @@ namespace VehicleCheck
                     height = maxHeight - (int)highSensorDataTable.Rows[0]["VALUE"];
                     int realPassInTime = (int)highSensorDataTable.AsEnumerable().OrderBy(x => x["SENSORTIME"]).First()["SENSORTIME"];
 
+                    //计算车辆在龙门架下通过的时间间隔
+                    /////////////////////
+                    passTime = (DateTime)highSensorDataTable.Rows[0]["PASSTIME"];
+                    foreach (DataRow dr in highSensorDataTable.Rows)
+                    {
+                        int flag = (int)dr["FLAG"];
+                        int tempSensortime = (int)dr["SENSORTIME"];
+                        if (flag == 0)
+                        {
+                            realInTime = realInTime > tempSensortime ? tempSensortime : realInTime;
+                        }
+                        else if (flag == 1)
+                        {
+                            realOutTime = realOutTime < tempSensortime ? tempSensortime : realOutTime;
+                        }
+                    }
+
+                    //获取从龙门架到F杆的通过时间间隔
                     dataWhere.Clear();
                     dataWhere.add("SENSORTIME", WhereObjectType.GreaterThanOrEqualTo, inTime.ToString());
                     dataWhere.add("SENSORTIME", WhereObjectType.LessThanOrEqualTo, outTime.ToString());
@@ -413,11 +433,8 @@ namespace VehicleCheck
                     DataTable timeSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 0, "SENSORTIME");
                     int realPassOutTime = (int)timeSensorDataTable.AsEnumerable().OrderBy(x => x["SENSORTIME"]).First()["SENSORTIME"];
                     realPassTimeSpan = realPassOutTime - realPassInTime;
+
                     
-                    //计算车辆在龙门架下通过的时间间隔
-
-
-                    passTime = (DateTime)highSensorDataTable.Rows[0]["PASSTIME"];
                 }
                 else  //原始传感器采样
                 {
@@ -637,11 +654,12 @@ namespace VehicleCheck
                             //speed = double.Parse(passInfoTable.Rows[0]["SPEED"].ToString());
                             //speed = speed > 40 ? speed : speed * 4;
                             //新的速度算法
-                            speed = double.Parse(passInfoTable.Rows[0]["SPEED"].ToString());
+                            int totalPassTime = (int)dr["TIMESPAN"];
+                            speed = (double)speedAreaLength / totalPassTime;
                             plate = passInfoTable.Rows[0]["CAR_PLATE"].ToString();
                             path = passInfoTable.Rows[0]["IMG_PATH"].ToString();
 
-                            double lenght = speed * (double.Parse(dr["TIMESPAN"].ToString())) / 36;//单位为cm
+                            double lenght = speed * ((int)dr["OUT_TIME"] - (int)dr["IN_TIME"]);//单位为cm
                             double width = double.Parse(dr["WIDTH"].ToString());
 
                             //////对width做补充
