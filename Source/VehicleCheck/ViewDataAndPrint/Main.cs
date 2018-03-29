@@ -69,8 +69,16 @@ namespace ViewDataAndPrint
                 foreach (DataRow dr in table.Rows)
                 {
                     dr["LENGHT_DESC"] = Math.Round(double.Parse(dr["LENGHT"].ToString()) / 100, 3).ToString("0.000");
-                    dr["WIDTH_DESC"] = Math.Round(double.Parse(dr["WIDTH"].ToString()) / 100, 3).ToString("0.000");
-                    if (dr["HEIGHT"].ToString() == "0.00")
+                    //dr["WIDTH_DESC"] = Math.Round(double.Parse(dr["WIDTH"].ToString()) / 100, 3).ToString("0.000");
+                    if (double.Parse(dr["WIDTH"].ToString()) < 2.5)
+                    {
+                        dr["WIDTH_DESC"] = "小于2.5米";
+                    }
+                    else
+                    {
+                        dr["WIDTH_DESC"] = Math.Round(double.Parse(dr["WIDTH"].ToString()) / 100, 3).ToString("0.000");
+                    }
+                    if (double.Parse(dr["HEIGHT"].ToString()) < 4)
                     {
                         dr["HEIGHT_DESC"] = "小于4米";
                     }

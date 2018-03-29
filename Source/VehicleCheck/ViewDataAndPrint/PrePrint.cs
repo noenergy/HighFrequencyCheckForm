@@ -44,8 +44,9 @@ namespace ViewDataAndPrint
                 lblPlate.Text = result["CAR_PLATE"].ToString();
                 lblSpeed.Text = result["SPEED"].ToString();
                 lblLenght.Text = Math.Round(double.Parse(result["LENGHT"].ToString()) / 100, 3).ToString("0.000");
-                lblWidth.Text = Math.Round(double.Parse(result["WIDTH"].ToString()) / 100, 3).ToString("0.000");
-                lblHeight.Text = double.Parse(result["HEIGHT"].ToString()) == 0 ? "小于4米" : Math.Round(double.Parse(result["HEIGHT"].ToString()) / 100, 3).ToString("0.000");
+                //lblWidth.Text = Math.Round(double.Parse(result["WIDTH"].ToString()) / 100, 3).ToString("0.000");
+                lblWidth.Text = double.Parse(result["WIDTH"].ToString()) < 2.5 ? "小于2.5米" : Math.Round(double.Parse(result["WIDTH"].ToString()) / 100, 3).ToString("0.000");
+                lblHeight.Text = double.Parse(result["HEIGHT"].ToString()) < 4 ? "小于4米" : Math.Round(double.Parse(result["HEIGHT"].ToString()) / 100, 3).ToString("0.000");
                 //pB_Img.ImageLocation = result["IMG_PATH"].ToString().Replace("D:", string.Format("\\\\{0}", imgServer));
                 //pB_Plate.ImageLocation = result["IMG_PATH"].ToString().Replace("D:", string.Format("\\\\{0}", imgServer)).Replace(".jpg", "~.jpg");
                 //pB_Img.ImageLocation = result["IMG_PATH"].ToString().Replace("D:", string.Format("{0}", imgServer));

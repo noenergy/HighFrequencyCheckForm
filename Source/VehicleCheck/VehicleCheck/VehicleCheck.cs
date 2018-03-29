@@ -78,7 +78,7 @@ namespace VehicleCheck
         //去除最大最小传感器进入出去时间的数据数量
         int removeDataBase = 6;
         //最大高度
-        int maxHeight = 600;
+        int maxHeight = 6000;
         //测速区域长度(m)
         double speedAreaLength = 22.6;
         /// <summary>
@@ -167,8 +167,6 @@ namespace VehicleCheck
                         dataWhere.add("ID", WhereObjectType.LessThanOrEqualTo, maxWidthSensor);
                         DataTable sensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 0, "IN_SENSORTIME");
 
-                        startId = endId;
-
                         if (sensorDataTable.Rows.Count.Equals(0)) { continue; }
 
                         //所有传感器最小值
@@ -230,7 +228,7 @@ namespace VehicleCheck
                         int CarEnd = 0;
                         for (int scanTime = minSensorTime; scanTime <= maxSensorTime; scanTime += 100)
                         {                            
-                            var scanTimeSensorList = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime <= scanTime && x.EndTime >= scanTime && x.ID < cut23).OrderBy(x => x.ID);
+                            var scanTimeSensorList = listSensorTimeSpan.Where(x => x.isUsed == 0 && x.StartTime <= scanTime && x.EndTime >= scanTime).OrderBy(x => x.ID);
                             int scanCount = scanTimeSensorList.Count();
                             int scanSpan = scanCount > 0 ? scanTimeSensorList.Max(x => x.ID) - scanTimeSensorList.Min(x => x.ID) : 0;
 
@@ -285,7 +283,7 @@ namespace VehicleCheck
                                     if (pCarRight - pCarLeft > minSensorSpanNum)
                                     {
                                         var carDataList = carData.Where(x => x.isUsed == 1 && x.StartTime >= pCarStart && x.EndTime <= pCarEnd && x.ID >= pCarLeft && x.ID <= pCarRight).ToList();
-                                        AddNewCarToList(carDataList, pCarStart, pCarEnd, pCarLeft, pCarRight, manager);
+                                        AddNewCarToList(carDataList, pCarStart, pCarEnd, pCarLeft, pCarRight, startId, endId, manager);
                                     }
                                 }
                             }
@@ -307,6 +305,9 @@ namespace VehicleCheck
 
                             manager.AddNewEntity(ref middleCarInfo);
                         }
+
+                        //计算完成后上一个结束点定义为开始点
+                        startId = endId;
 
                         //传入后清空车辆列表
                         carList.Clear();
@@ -330,7 +331,7 @@ namespace VehicleCheck
         /// <param name="inTime"></param>
         /// <param name="outTime"></param>
         /// <param name="passTime"></param>
-        private void AddNewCarToList(List<SensorTimeSpan> carData, int inTime, int outTime, int leftSensorId, int rightSensorId, EntityManager manager) 
+        private void AddNewCarToList(List<SensorTimeSpan> carData, int inTime, int outTime, int leftSensorId, int rightSensorId, string startId, string endId, EntityManager manager)
         {
             try
             {
@@ -395,24 +396,29 @@ namespace VehicleCheck
 
                 EntityBase sensorDataEntity = new EntityBase("V_HEIGHT_TIME_DATA", manager);
                 WhereObjectList dataWhere = new WhereObjectList();
+                dataWhere.add("LOGID", WhereObjectType.GreaterThanOrEqualTo, startId.ToString());
+                dataWhere.add("LOGID", WhereObjectType.LessThanOrEqualTo, endId.ToString());
                 dataWhere.add("SENSORTIME", WhereObjectType.GreaterThanOrEqualTo, inTime.ToString());
                 dataWhere.add("SENSORTIME", WhereObjectType.LessThanOrEqualTo, outTime.ToString());
                 dataWhere.add("SENSOR_TYPE", WhereObjectType.EqualTo, "2");
                 dataWhere.add("ID", WhereObjectType.GreaterThanOrEqualTo, leftSensorId);
                 dataWhere.add("ID", WhereObjectType.LessThanOrEqualTo, rightSensorId);
-                DataTable highSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 0, "VALUE");
+                DataTable highSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 0, "PASSTIME");
                 if (highSensorDataTable.Rows.Count > 0)
                 {
-                    height = maxHeight - (int)highSensorDataTable.Rows[0]["VALUE"];
-                    int realPassInTime = (int)highSensorDataTable.AsEnumerable().OrderBy(x => x["SENSORTIME"]).First()["SENSORTIME"];
+                    int realPassInTime = (int)highSensorDataTable.Rows[0]["SENSORTIME"];
+
+                    passTime = (DateTime)highSensorDataTable.Rows[0]["PASSTIME"];
+                    int distanceHeight = (int)highSensorDataTable.Rows[0]["VALUE"];
 
                     //计算车辆在龙门架下通过的时间间隔
                     /////////////////////
-                    passTime = (DateTime)highSensorDataTable.Rows[0]["PASSTIME"];
                     foreach (DataRow dr in highSensorDataTable.Rows)
                     {
-                        int flag = (int)dr["FLAG"];
+                        int flag = int.Parse(dr["FLAG"].ToString());
                         int tempSensortime = (int)dr["SENSORTIME"];
+                        
+                        if (tempSensortime == realPassInTime) { passTime = (DateTime)dr["PASSTIME"]; }
                         if (flag == 0)
                         {
                             realInTime = realInTime > tempSensortime ? tempSensortime : realInTime;
@@ -421,25 +427,37 @@ namespace VehicleCheck
                         {
                             realOutTime = realOutTime < tempSensortime ? tempSensortime : realOutTime;
                         }
+
+                        distanceHeight = distanceHeight < (int)dr["VALUE"] ? distanceHeight : (int)dr["VALUE"];
                     }
+                    height = maxHeight - distanceHeight;
 
                     //获取从龙门架到F杆的通过时间间隔
                     dataWhere.Clear();
-                    dataWhere.add("SENSORTIME", WhereObjectType.GreaterThanOrEqualTo, inTime.ToString());
-                    dataWhere.add("SENSORTIME", WhereObjectType.LessThanOrEqualTo, outTime.ToString());
+                    dataWhere.add("LOGID", WhereObjectType.GreaterThanOrEqualTo, startId.ToString());
+                    dataWhere.add("LOGID", WhereObjectType.LessThanOrEqualTo, endId.ToString());
+                    dataWhere.add("SENSORTIME", WhereObjectType.GreaterThan, inTime.ToString());
+                    dataWhere.add("PASSTIME", WhereObjectType.GreaterThan, passTime.ToString());
                     dataWhere.add("SENSOR_TYPE", WhereObjectType.EqualTo, "3");
                     dataWhere.add("ID", WhereObjectType.GreaterThanOrEqualTo, leftSensorId);
                     dataWhere.add("ID", WhereObjectType.LessThanOrEqualTo, rightSensorId);
-                    DataTable timeSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 0, "SENSORTIME");
-                    int realPassOutTime = (int)timeSensorDataTable.AsEnumerable().OrderBy(x => x["SENSORTIME"]).First()["SENSORTIME"];
-                    realPassTimeSpan = realPassOutTime - realPassInTime;
-
-                    
+                    DataTable timeSensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 0, "PASSTIME");
+                    if (timeSensorDataTable.Rows.Count > 0)
+                    {
+                        int realPassOutTime = (int)timeSensorDataTable.AsEnumerable().OrderBy(x => x["SENSORTIME"]).First()["SENSORTIME"];
+                        realPassTimeSpan = realPassOutTime - realPassInTime;
+                    }
+                    else
+                    {
+                        realPassTimeSpan = 0;
+                    }
                 }
                 else  //原始传感器采样
                 {
                     //高度部分
                     dataWhere.Clear();
+                    dataWhere.add("LOGID", WhereObjectType.GreaterThanOrEqualTo, startId.ToString());
+                    dataWhere.add("LOGID", WhereObjectType.LessThanOrEqualTo, endId.ToString());
                     dataWhere.add("SENSORTIME", WhereObjectType.GreaterThanOrEqualTo, inTime.ToString());
                     dataWhere.add("SENSORTIME", WhereObjectType.LessThanOrEqualTo, outTime.ToString());
                     dataWhere.add("SENSOR_TYPE", WhereObjectType.EqualTo, "1");
@@ -609,37 +627,28 @@ namespace VehicleCheck
                     foreach (DataRow dr in middleResultTable.Rows)
                     {
                         DateTime passTime = DateTime.Parse(dr["PASSTIME"].ToString());
-                        DateTime maxPassTime = passTime.AddSeconds(5);
+                        DateTime fPassTime = DateTime.Parse(dr["FPASSTIME"].ToString());
                         //由于测速在测宽高后,所以不可能出现早于测宽高的情况
-                        string minPassDataDate = passTime.ToString("yyyyMMdd");
-                        string minPassDataTime = passTime.ToString("Hmmssfff");
-                        string maxPassDataDate = maxPassTime.ToString("yyyyMMdd");
-                        string maxPassDataTime = maxPassTime.ToString("Hmmssfff");
+                        string cPassDataDate = passTime.ToString("yyyyMMdd");
+                        string cPassDataTime = passTime.ToString("Hmmssfff");
+                        string fPassDataDate = fPassTime.ToString("yyyyMMdd");
+                        string fPassDataTime = fPassTime.ToString("Hmmssfff");
                         where.Clear();
-                        where.add("DATE_ID", WhereObjectType.GreaterThanOrEqualTo, minPassDataDate);
-                        where.add("TIME_ID", WhereObjectType.GreaterThanOrEqualTo, minPassDataTime);
-                        where.add("DATE_ID", WhereObjectType.LessThanOrEqualTo, maxPassDataDate);
-                        where.add("TIME_ID", WhereObjectType.LessThanOrEqualTo, maxPassDataTime);
+                        where.add("DATE_ID", WhereObjectType.GreaterThanOrEqualTo, cPassDataDate);
+                        where.add("TIME_ID", WhereObjectType.GreaterThanOrEqualTo, cPassDataTime);
+                        where.add("DATE_ID", WhereObjectType.LessThanOrEqualTo, fPassDataDate);
+                        where.add("TIME_ID", WhereObjectType.LessThanOrEqualTo, fPassDataTime);
                         where.add("LANE_ID", WhereObjectType.EqualTo, dr["LANE_ID"].ToString());
                         where.add("IS_USE", WhereObjectType.EqualTo, 0); //未使用的
                         //必须按照时间正序排列
-                        DataTable passInfoTable = manager.GetTableEx(passInfoEntity, where, 1, "DATE_ID,TIME_ID");
+                        DataTable passInfoTable = manager.GetTableEx(passInfoEntity, where, 1, "DATE_ID,TIME_ID DESC");
                         if (passInfoTable.Rows.Count > 0)
                         {
-                            //立即更新车牌信息为已使用
-                            //passInfoEntity.SetNothing();                            
-                            //passInfoEntity["DATE_ID"] = passInfoTable.Rows[0]["DATE_ID"];
-                            //passInfoEntity["TIME_ID"] = passInfoTable.Rows[0]["TIME_ID"];
-                            //passInfoEntity["CAR_PLATE"] = passInfoTable.Rows[0]["CAR_PLATE"];
-                            //passInfoEntity["LANE_ID"] = passInfoTable.Rows[0]["LANE_ID"];
-                            //passInfoEntity["IS_USE"] = 1;
-                            //manager.UpdateEntity(passInfoEntity);
-
                             //采用Where方案,解决可能存在的重复车牌问题
                             WhereObjectList passWhere = new WhereObjectList();
                             passWhere.add("DATE_ID", WhereObjectType.EqualTo, passInfoTable.Rows[0]["DATE_ID"]);
                             passWhere.add("TIME_ID", WhereObjectType.GreaterThanOrEqualTo, passInfoTable.Rows[0]["TIME_ID"]);
-                            passWhere.add("TIME_ID", WhereObjectType.LessThanOrEqualTo, ((int)passInfoTable.Rows[0]["TIME_ID"] + 1000));
+                            passWhere.add("TIME_ID", WhereObjectType.LessThanOrEqualTo, ((int)passInfoTable.Rows[0]["TIME_ID"] + allowDifftime));
                             passWhere.add("CAR_PLATE", WhereObjectType.EqualTo, passInfoTable.Rows[0]["CAR_PLATE"]);
                             passWhere.add("LANE_ID", WhereObjectType.EqualTo, passInfoTable.Rows[0]["LANE_ID"]);
                             passInfoEntity["IS_USE"] = 1;

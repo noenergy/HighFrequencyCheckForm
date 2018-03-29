@@ -53,6 +53,20 @@ namespace CreateImgStream
                 dataWhere.add("LOGID", WhereObjectType.LessThanOrEqualTo, endId);
                 DataTable sensorDataTable = manager.GetTableEx(sensorDataEntity, dataWhere, 0, "IN_SENSORTIME");
 
+                //获取特殊传感器编号
+                EntityBase SpecialSensorEntity = new EntityBase("SENSOR_CONFIG");
+                WhereObjectList speciWhere = new WhereObjectList();
+                speciWhere.add("SENSOR_TYPE", WhereObjectType.EqualTo, "3");
+                DataTable specialSensorTable = manager.GetTableEx(SpecialSensorEntity, speciWhere, 0, "SENSOR_SORT");
+                List<string> specialSensorList = new List<string>();
+                if (specialSensorTable.Rows.Count > 0)
+                {
+                    foreach (DataRow dr in specialSensorTable.Rows)
+                    {
+                        specialSensorList.Add(dr["SENSOR_SORT"].ToString());
+                    }              
+                }
+
                 if (sensorDataTable.Rows.Count.Equals(0)) { throw new Exception("NO DATA!"); }
 
                 int rowCount = sensorDataTable.Rows.Count;
@@ -79,6 +93,7 @@ namespace CreateImgStream
                 string imgPath = string.Format("{0}\\{1}", foldPath, fileName);
                 Pen pBlack = new Pen(Color.Black, 1);
                 Pen gp = new Pen(Color.GreenYellow, 1);
+                Pen bp = new Pen(Color.CornflowerBlue, 1);
                 Pen rp = new Pen(Color.Red, 1);
                 //从100，100 开始画
                 int lenghtOffset = ((minTimeValue / 100) * 100) - 100;
@@ -86,6 +101,10 @@ namespace CreateImgStream
 
                 for (int i = 1; i < 255; i++)
                 {
+                    if (specialSensorList.Contains(i.ToString()))
+                    {
+                        g.DrawLine(bp, i * 2 - widthOffset, 0, i * 2 - widthOffset, ((maxTimeValue - minTimeValue) + 200));
+                    }
                     if (i % 10 == 0)
                     {
                         g.DrawLine(gp, i * 2 - widthOffset, 0, i * 2 - widthOffset, ((maxTimeValue - minTimeValue) + 200));

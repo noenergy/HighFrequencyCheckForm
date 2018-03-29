@@ -24,7 +24,6 @@ static _ConnectionPtr m_pConnection;
 static _RecordsetPtr m_pRecordset;
 
 void ConnectUdp(void);
-void RESET_TIME_BY_UDP(void);
 void ConnectSql(void);
 void ExitConnect(void);
 int chartoint(unsigned char, unsigned char *);
@@ -37,6 +36,8 @@ bool isReset = false;
 int readyCount = 0;
 int resetCount = 0;
 int mustCloseCount = 0;
+
+bool needResetFlag = false;
 
 HANDLE hcom;
 BYTE SendData[8];
@@ -124,27 +125,98 @@ DWORD WINAPI FORCE_RESET_CAR_CHECK_FLAG(LPVOID lpParamter)
 	return 0;
 }
 
+///重置时间
+DWORD WINAPI RESET_TIME_BY_UDP(LPVOID lpParamter)
+{
+	cout << "自动同步传感器时间线程启动成功!" << endl;
+	while (true)
+	{
+		if (needResetFlag)
+		{
+			//触发后沉默0.4s
+			Sleep(400);
+			try
+			{
+				unsigned char Data[13];
+				char szData[40];
+				BYTE DataLen = 0;
+				char SendBuf[13];
+
+				//SockDestCan
+				int m_DevPort = 4000;
+				SOCKADDR_IN SockDestCan;
+				SockDestCan.sin_family = AF_INET;
+				SockDestCan.sin_port = htons(m_DevPort);
+				SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.101");
+
+				char addressStart[11] = "192.1.0.10";
+				char addressEnd[2] = "0";
+				char address[12] = "192.1.0.100";
+
+				char h[3];
+
+				char prefixSentData[13] = "08 00 00 00 ";
+				char suffixSentData[25] = " f1 00 00 00 00 00 00 00";
+				char sentData[39];
+
+				//准备13字节的数据
+				strcpy_s(szData, "08 00 00 00 01 f1 00 00 00 00 00 00 00");
+				strtodata((unsigned char*)szData, Data, 13, 1);
+				memcpy(SendBuf, Data, sizeof(Data));
+
+				sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+				cout << "192.1.0.101" << endl;
+				SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.108");
+				sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+				cout << "192.1.0.108" << endl;
+
+				for (int i = 34; i <= 231; i++)
+				{
+					_ltoa_s(i, h, 16);
+					sprintf_s(sentData, "%s%02s%s", prefixSentData, h, suffixSentData);
+
+					strcpy_s(szData, sentData);
+					strtodata((unsigned char*)szData, Data, 13, 1);
+					memcpy(SendBuf, Data, sizeof(Data));
+
+					if (i % 33 == 0)
+					{
+						*addressEnd = char(i / 33 + 48);
+					}
+					else
+					{
+						*addressEnd = char(i / 33 + 49);
+					}
+					strcpy_s(address, addressStart);
+					strcat_s(address, addressEnd);
+					
+					SockDestCan.sin_addr.S_un.S_addr = inet_addr(address);
+					sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
+					cout << address << ":" << sentData << GetTickCount() << endl;
+				}
+			}
+			catch (_com_error e)
+			{
+				cout << e.Description() << endl;
+			}
+			needResetFlag = false;
+		}
+		Sleep(100);
+	}
+}
+
 int _tmain(int argc, _TCHAR* argv[])
 {
 	try
 	{	
-		int iii = 231;
-		char h[5];
-		char hs[5];
-
-		_ltoa_s(iii, h, 16);
-
-		sprintf_s(hs, "%04s", h);
-
-		printf("i=%d,hs=%s\n", iii, hs);
-		Sleep(1000000);
-
 		//连接数据库
 		//覆盖外部声明
 		_RecordsetPtr m_pRecordset;
 		string sql="select * from CAR_SOURCE";
 		_bstr_t bstr_t(sql.c_str());
 		m_pRecordset=GetRecordset(bstr_t);
+
+		ConnectUdp();
 
 		//打开重置车辆计算标识线程
 		try
@@ -158,8 +230,6 @@ int _tmain(int argc, _TCHAR* argv[])
 			throw e;
 		}
 
-		ConnectUdp();
-
 		//打开强制重置车辆计算标识线程
 		try
 		{
@@ -172,14 +242,26 @@ int _tmain(int argc, _TCHAR* argv[])
 			throw e;
 		}
 
+		//打开自动同步传感器时间线程
+		try
+		{
+			HANDLE hThread = CreateThread(NULL, 0, RESET_TIME_BY_UDP, NULL, 0, NULL);
+			CloseHandle(hThread);
+		}
+		catch (_com_error e)
+		{
+			cout << "自动同步传感器时间线程启动失败!" << endl;
+			throw e;
+		}
+
 		BYTE RecBuf[2048];
 		int i = 0;
-		int Len = 0, Reslut;
+		int Len = 0, Reslut = 0;
 		cout << "开始数据接收，请勿关闭该界面!" << endl;
-		while (true)
-		{			
-			Reslut = 0;
 
+		while (true)
+		{
+			needResetFlag = true;
 			//UDP接收 
 			Reslut = recvfrom(SocketHost, (char*)RecBuf, sizeof(RecBuf), 0, (SOCKADDR*)&SockFrom, &SockAddrlen);
 
@@ -191,16 +273,8 @@ int _tmain(int argc, _TCHAR* argv[])
 				//return 0;
 			}
 
-			if (isStop)
-			{
-				RESET_TIME_BY_UDP();
-				isStop = false;
-				readyCount = 0;
-			}
-			else
-			{
-				readyCount = 0;
-			}
+			if (isStop) { isStop = false; }
+			readyCount = 0;
 
 			INT id, flag, value, time;
 			id = (INT)(RecBuf[3] * 256 + RecBuf[4]);
@@ -214,6 +288,11 @@ int _tmain(int argc, _TCHAR* argv[])
 			m_pRecordset->PutCollect("VALUE", _variant_t(value));
 			m_pRecordset->PutCollect("SENSORTIME", _variant_t(time));
 			m_pRecordset->Update();
+
+			if (flag == 6 && !needResetFlag)
+			{
+				needResetFlag = true;
+			}
 		}
 		ExitConnect();
 	}
@@ -283,98 +362,6 @@ void ConnectUdp()
 	}
 }
 
-///重置时间
-void RESET_TIME_BY_UDP()
-{
-	//触发后沉默0.5s
-	Sleep(700);
-	try
-	{
-		unsigned char Data[13];
-		char szData[40];
-		BYTE DataLen = 0;
-		char SendBuf[13];
-
-		//SockDestCan
-		int m_DevPort = 4000;
-		SOCKADDR_IN SockDestCan;
-		SockDestCan.sin_family = AF_INET;
-		SockDestCan.sin_port = htons(m_DevPort);
-		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.101");
-
-		//准备13字节的数据
-		strcpy_s(szData, "08 00 00 00 01 F1 00 00 00 00 00 00 00");
-		strtodata((unsigned char*)szData, Data, 13, 1);
-		memcpy(SendBuf, Data, sizeof(Data));
-
-		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		//if (sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR)) == SOCKET_ERROR)
-		//{
-		//	cout << "UDP 发送失败" << endl;
-		//	cout << WSAGetLastError() << endl;
-		//}
-		//else
-		//{
-		//	cout << "UDP 发送成功" << endl;
-		//	m_pRecordset->AddNew();
-		//	m_pRecordset->PutCollect("ID", _variant_t(0));
-		//	m_pRecordset->PutCollect("FLAG", _variant_t(-1));
-		//	m_pRecordset->PutCollect("VALUE", _variant_t(0));
-		//	m_pRecordset->PutCollect("SENSORTIME", _variant_t(-1));
-		//	m_pRecordset->Update();
-		//}
-		//cout << "重置传感器时间成功!" << endl;
-
-		SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.108");
-		sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-
-		char addressStart[11] = "192.1.0.10";
-		char addressEnd[2] = "0";
-		char address[12] = "192.1.0.100";
-
-		for (int i = 34; i <= 231; i++)
-		{
-			strcpy_s(szData, "08 00 00 FF FF F1 00 00 00 00 00 00 00");
-			strtodata((unsigned char*)szData, Data, 13, 1);
-			memcpy(SendBuf, Data, sizeof(Data));
-
-			if (i % 33 == 0)
-			{
-				*addressEnd = char(i / 33 + 48);
-			}
-			else
-			{
-				*addressEnd = char(i / 33 + 49);
-			}
-			strcpy_s(address, addressStart);
-			strcat_s(address, addressEnd);
-
-			SockDestCan.sin_addr.S_un.S_addr = inet_addr(address);
-			sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		}
-
-		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.101");
-		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.102");
-		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.103");
-		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.104");
-		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.105");
-		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.106");
-		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-		//SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.107");
-		//sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
-	}
-	catch (_com_error e)
-	{
-		cout << e.Description() << endl;
-	}
-}
-
-
 //-----------------------------------------------------
 //参数：
 //str：要转换的字符串
@@ -437,8 +424,9 @@ void ConnectSql()
 	{
 		::CoInitialize(NULL);//初始化COM环境
 		m_pConnection.CreateInstance(__uuidof(Connection));//创建连接对象
-		m_pConnection->ConnectionString="Provider=SQLOLEDB; User ID=sa; Password=123456; Initial Catalog=VEHICLES_DATA; Data Source=."; //请将数据库相应ID与Password更改
-		
+		//m_pConnection->ConnectionString="Provider=SQLOLEDB; User ID=sa; Password=123456; Initial Catalog=VEHICLES_DATA; Data Source=."; //请将数据库相应ID与Password更改
+		m_pConnection->ConnectionString = "Provider=SQLOLEDB; User ID=sa; Password=123456; Initial Catalog=VEHICLES_DATA; Data Source=10.211.55.24"; //请将数据库相应ID与Password更改
+
 		//连接服务器和数据库
 		HRESULT hr=m_pConnection->Open("", "", "", 0);
 		if(hr!=S_OK)
