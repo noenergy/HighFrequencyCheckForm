@@ -164,6 +164,8 @@ DWORD WINAPI RESET_TIME_BY_UDP(LPVOID lpParamter)
 				strtodata((unsigned char*)szData, Data, 13, 1);
 				memcpy(SendBuf, Data, sizeof(Data));
 
+				cout << GetTickCount() << endl;
+
 				sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
 				cout << "192.1.0.101" << endl;
 				SockDestCan.sin_addr.S_un.S_addr = inet_addr("192.1.0.108");
@@ -194,6 +196,7 @@ DWORD WINAPI RESET_TIME_BY_UDP(LPVOID lpParamter)
 					sendto(SocketHost, SendBuf, 1 * sizeof(SendBuf), 0, (SOCKADDR*)&SockDestCan, sizeof(SOCKADDR));
 					cout << address << ":" << sentData << GetTickCount() << endl;
 				}
+				cout << GetTickCount() << endl;
 			}
 			catch (_com_error e)
 			{
@@ -211,10 +214,10 @@ int _tmain(int argc, _TCHAR* argv[])
 	{	
 		//连接数据库
 		//覆盖外部声明
-		_RecordsetPtr m_pRecordset;
-		string sql="select * from CAR_SOURCE";
-		_bstr_t bstr_t(sql.c_str());
-		m_pRecordset=GetRecordset(bstr_t);
+		//_RecordsetPtr m_pRecordset;
+		//string sql="select * from CAR_SOURCE";
+		//_bstr_t bstr_t(sql.c_str());
+		//m_pRecordset=GetRecordset(bstr_t);
 
 		ConnectUdp();
 
@@ -424,8 +427,8 @@ void ConnectSql()
 	{
 		::CoInitialize(NULL);//初始化COM环境
 		m_pConnection.CreateInstance(__uuidof(Connection));//创建连接对象
-		//m_pConnection->ConnectionString="Provider=SQLOLEDB; User ID=sa; Password=123456; Initial Catalog=VEHICLES_DATA; Data Source=."; //请将数据库相应ID与Password更改
-		m_pConnection->ConnectionString = "Provider=SQLOLEDB; User ID=sa; Password=123456; Initial Catalog=VEHICLES_DATA; Data Source=10.211.55.24"; //请将数据库相应ID与Password更改
+		m_pConnection->ConnectionString="Provider=SQLOLEDB; User ID=sa; Password=123456; Initial Catalog=VEHICLES_DATA; Data Source=."; //请将数据库相应ID与Password更改
+		//m_pConnection->ConnectionString = "Provider=SQLOLEDB; User ID=sa; Password=123456; Initial Catalog=VEHICLES_DATA; Data Source=10.211.55.24"; //请将数据库相应ID与Password更改
 
 		//连接服务器和数据库
 		HRESULT hr=m_pConnection->Open("", "", "", 0);
